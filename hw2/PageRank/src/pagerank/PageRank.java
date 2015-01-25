@@ -24,10 +24,16 @@ public class PageRank {
 		
 		if (sc.hasNextInt()) {
 			numberOfNodes = sc.nextInt();
+		} else {
+			System.err.println("Input Format Error");
+			System.exit(1);
 		}
 		
 		if (sc.hasNextInt()) {
 			numberOfEdges = sc.nextInt();
+		} else {
+			System.err.println("Input Format Error");
+			System.exit(1);
 		}
 		
 		// create a list of nodes
@@ -45,9 +51,15 @@ public class PageRank {
 			int nodeTo = 0;
 			if (sc.hasNextInt()) {
 				nodeFrom = sc.nextInt();
+			} else {
+				System.err.println("Input Format Error");
+				System.exit(1);
 			}
 			if (sc.hasNextInt()) {
 				nodeTo = sc.nextInt();
+			} else {
+				System.err.println("Input Format Error");
+				System.exit(1);
 			}
 			Edge newEdge = new Edge(nodeList.get(nodeFrom-1),nodeList.get(nodeTo-1));
 			nodeList.get(nodeFrom-1).addOutgoingEdge(newEdge);

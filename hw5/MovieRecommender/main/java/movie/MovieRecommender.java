@@ -43,7 +43,7 @@ public class MovieRecommender {
 			// multi-fold cross validation
 			userRecommender.validate(args[1], args[2]);
 			// predict results
-			//userRecommender.predict(args[1], args[2], args[3], args[4]);
+			userRecommender.predict(args[1], args[2], args[3], args[4]);
 			break;
 		case "item-based":
 			if (args.length != 5) {
@@ -51,8 +51,9 @@ public class MovieRecommender {
 			}
 			ItemBasedRecommender itemRecommender = new ItemBasedRecommender();
 			// multi-fold cross validation
+			itemRecommender.validate(args[1], args[2]);
 			// predict results
-			//itemRecommender.predict(args[1], args[2], args[3], args[4]);
+			itemRecommender.predict(args[1], args[2], args[3], args[4]);
 			break;
 		case "heuristic":
 			if (args.length != 7) {

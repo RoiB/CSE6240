@@ -11,13 +11,12 @@ import java.util.Random;
  */
 public class MagicNumbers {
 	
-	public final static double PERCENTAGE_OF_NEIGHBORS = 0.1;
-	public final static int LEAST_NUMBER_OF_NEIGHBORS = 15;
+	public final static double PERCENTAGE_OF_NEIGHBORS = 0.3;
+	public final static int LEAST_NUMBER_OF_NEIGHBORS = 10;
 	public final static int NUMBER_OF_PARTITIONS = 10;
 	
 	public final static int getRandomPartition() {
 		Random rand = new Random();
 		return rand.nextInt(NUMBER_OF_PARTITIONS);
 	}
-
 }

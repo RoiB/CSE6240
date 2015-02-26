@@ -19,14 +19,87 @@ public class UserBasedRecommender {
 	
 	public void validate(String similarityMethod, String inputFilePath) {
 		// read data, assign each rating a number from 1 to number of partitions
-		Map<Integer, Map<Integer, Pair<Integer, Integer>>> map = new TreeMap<Integer, Map<Integer,Pair<Integer,Integer>>>();
+		Map<Integer, Map<Integer, Pair<Integer, Integer>>> map = new TreeMap<>();
 		File dataFile = new File(inputFilePath);
 		try (Scanner sc = new Scanner(dataFile)) {
-			
+			while (sc.hasNextLine()) {
+				Scanner l = new Scanner(sc.nextLine());
+				l.useDelimiter(",");
+				Integer userId = l.nextInt();
+				Integer movieId = l.nextInt();
+				Integer rating = l.nextInt();
+				l.close();
+				Integer partition = MagicNumbers.getRandomPartition();
+				
+				Map<Integer, Pair<Integer, Integer>> item = map.get(userId);
+				if (item != null) {
+					item.put(movieId, new Pair<Integer, Integer>(rating, partition));
+				} else {
+					Map<Integer, Pair<Integer, Integer>> newMap = new TreeMap<>();
+					newMap.put(movieId, new Pair<Integer, Integer>(rating, partition));
+					map.put(userId, newMap);
+				}
+			}
 		} catch (FileNotFoundException e) {
 			System.err.println(e);
 			System.exit(1);
 		}
+		
+		// traverse data several times
+		// prepare some temporary files
+		for (int i = 0;i < MagicNumbers.NUMBER_OF_PARTITIONS;i++) {
+			try (
+					BufferedWriter traningSetWriter = new BufferedWriter(new FileWriter("training_set_"+i));
+					BufferedWriter testSetWriter = new BufferedWriter(new FileWriter("test_set_"+i));
+					BufferedWriter groundTruthWriter = new BufferedWriter(new FileWriter("ground_truth_"+i));
+					) {
+				for (Integer userId : map.keySet()) {
+					Map<Integer, Pair<Integer, Integer>> movies = map.get(userId);
+					for (Integer movieId : movies.keySet()) {
+						Pair<Integer, Integer> p = movies.get(movieId);
+						Integer rating = p.getFirst();
+						Integer partition = p.getSecond();
+						
+						if (partition != i) {
+							// trainging set	
+							traningSetWriter.write(""+userId+","+movieId+","+rating+","+"0"+"\n");
+						} else {
+							// test set	
+							testSetWriter.write(""+userId+","+movieId+"\n");
+							groundTruthWriter.write(rating+"\n");
+						}
+					}
+				}
+			} catch (IOException e) {
+				System.out.println(e);
+				System.exit(1);
+			}
+		}
+		
+		// cross validation
+		double totalRoundsError = 0;
+		double currentRoundError = 0;
+		for (int partition = 0;partition < MagicNumbers.NUMBER_OF_PARTITIONS;partition++) {
+			this.predict(similarityMethod, "training_set_"+partition, "test_set_"+partition, "test_result_"+partition);
+			try (
+					Scanner testScanner = new Scanner(new File("test_result_"+partition));
+					Scanner truthScanner = new Scanner(new File("ground_truth_"+partition));
+					) {
+				int n = 0;
+				while (truthScanner.hasNextDouble()) {
+					n++;
+					double truth = truthScanner.nextDouble();
+					double test = testScanner.nextDouble();
+					currentRoundError += Math.pow(truth-test,2);
+				}
+				currentRoundError = Math.sqrt(currentRoundError/n);
+			} catch (FileNotFoundException e) {
+				System.err.println(e);
+				System.exit(1);
+			}
+			totalRoundsError += currentRoundError;
+		}
+		System.out.println(totalRoundsError/MagicNumbers.NUMBER_OF_PARTITIONS);
 	}
 	
 	public void predict(String similarityMethod, 
@@ -62,7 +135,7 @@ public class UserBasedRecommender {
 		for (Integer i : map.keySet()) {
 			List<Pair<Integer, Integer>> list = map.get(i);
 			Collections.sort(list, (e1,e2)->{
-				if (e1.getFirst() > e2.getFirst()) {
+				if (e1.getFirst() < e2.getFirst()) {
 					return -1;
 				} else {
 					return 1;
@@ -90,6 +163,7 @@ public class UserBasedRecommender {
 			while (sc.hasNextLine()) {
 				String line = sc.nextLine();
 				int index = line.indexOf(',');
+				
 				Integer userId = Integer.parseInt(line.substring(0, index));
 				Integer movideId = Integer.parseInt(line.substring(index+1));
 				List<Pair<Integer, Integer>> currentUserRatings = map.get(userId);
@@ -148,8 +222,10 @@ public class UserBasedRecommender {
 				Collections.sort(userSimilarity, (e1, e2)->{
 					if (e1.getSecond() > e2.getSecond()) {
 						return -1;
-					} else {
+					} else if (e1.getSecond() < e2.getSecond()){
 						return 1;
+					} else {
+						return 0;
 					}
 				});
 				int topNToChoose = MagicNumbers.LEAST_NUMBER_OF_NEIGHBORS; // choose how many as neighbors?

@@ -20,6 +20,8 @@ public class MagicNumbers {
 	
 	public final static float DEFAULT_MOVIE_RATING = 4;
 	
+	public final static double EPSILON = 0.0001;
+	
 	public final static int getRandomPartition() {
 		Random rand = new Random();
 		return rand.nextInt(NUMBER_OF_PARTITIONS);

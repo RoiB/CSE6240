@@ -15,11 +15,11 @@ public class MovieRecommender {
 	private void help() {
 		System.out.println("Usage:");
 		System.out.println("1. java -jar MovieRecommender.jar user-based [similarity-calculator]"
-				+ " [input-file-path] [to-be-rated-file-path] [output-file-path]");
+				+ " [rating-file-path] [to-be-rated-file-path] [output-file-path]");
 		System.out.println("2. java -jar MovieRecommender.jar item-based [similarity-calculator]"
-				+ " [input-file-path] [to-be-rated-file-path] [output-file-path]");
-		System.out.println("3. java -jar MovieRecommender.jar heuristic [similarity-calculator]"
-				+ " [input-file-path-1] [input-file-path-2] [input-file-path-3] [to-be-rated-file-path] [output-file-path]");
+				+ " [rating-file-path] [to-be-rated-file-path] [output-file-path]");
+		System.out.println("3. java -jar MovieRecommender.jar heuristic"
+				+ " [rating-file-path-1] [user-file-path-2] [item-file-path-3] [to-be-rated-file-path] [output-file-path]");
 		return;
 	}
 	
@@ -51,19 +51,19 @@ public class MovieRecommender {
 			}
 			ItemBasedRecommender itemRecommender = new ItemBasedRecommender();
 			// multi-fold cross validation
-			//itemRecommender.validate(args[1], args[2]);
+			itemRecommender.validate(args[1], args[2]);
 			// predict results
-			itemRecommender.predict(args[1], args[2], args[3], args[4]);
+			//itemRecommender.predict(args[1], args[2], args[3], args[4]);
 			break;
 		case "heuristic":
-			if (args.length != 7) {
+			if (args.length != 6) {
 				help();
 			}
 			HeuristicRecommender heuristicRecommender = new HeuristicRecommender();
 			// multi-fold cross validation
-			//heuristicRecommender.validate(args[1], args[2]);
+			//heuristicRecommender.validate(args[1], args[2], args[3]);
 			// predict results
-			//heuristicRecommender.predict(args[1], args[2], args[3], args[4], args[5], args[6]);
+			heuristicRecommender.predict(args[1], args[2], args[3], args[4], args[5]);
 			break;
 		default:
 			help();

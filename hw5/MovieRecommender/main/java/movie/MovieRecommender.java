@@ -38,22 +38,32 @@ public class MovieRecommender {
 		case "user-based":
 			if (args.length != 5) {
 				help();
+				System.exit(1);
+			}
+			if (!args[1].equals("Jaccard")&&!args[1].equals("Pearson")&&!args[1].equals("cosine")) {
+				help();
+				System.exit(1);
 			}
 			UserBasedRecommender userRecommender = new UserBasedRecommender();
 			// multi-fold cross validation
-			userRecommender.validate(args[1], args[2]);
+			//userRecommender.validate(args[1], args[2]);
 			// predict results
 			userRecommender.predict(args[1], args[2], args[3], args[4]);
 			break;
 		case "item-based":
 			if (args.length != 5) {
 				help();
+				System.exit(1);
+			}
+			if (!args[1].equals("Jaccard")&&!args[1].equals("Pearson")&&!args[1].equals("cosine")) {
+				help();
+				System.exit(1);
 			}
 			ItemBasedRecommender itemRecommender = new ItemBasedRecommender();
 			// multi-fold cross validation
-			itemRecommender.validate(args[1], args[2]);
+			//itemRecommender.validate(args[1], args[2]);
 			// predict results
-			//itemRecommender.predict(args[1], args[2], args[3], args[4]);
+			itemRecommender.predict(args[1], args[2], args[3], args[4]);
 			break;
 		case "heuristic":
 			if (args.length != 6) {

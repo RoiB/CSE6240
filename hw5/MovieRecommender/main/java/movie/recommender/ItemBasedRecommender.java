@@ -7,8 +7,13 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Scanner;
+import java.util.Set;
+import java.util.Map.Entry;
 
 import movie.configuration.MagicNumbers;
 import movie.util.Pair;
@@ -17,9 +22,9 @@ public class ItemBasedRecommender {
 
 	public void validate(String similarityMethod, String inputFilePath) {
 		
+		
 		// read data and assign each value a partition
-		short[][] ratings = new short[MagicNumbers.NUMBER_OF_USERS][MagicNumbers.NUMBER_OF_MOVIES];
-		short[][] partition = new short[MagicNumbers.NUMBER_OF_USERS][MagicNumbers.NUMBER_OF_MOVIES];
+		Map<Integer, Map<Integer, Pair<Integer, Integer>>> ratings = new HashMap<>();
 		File input = new File(inputFilePath);
 		try (Scanner sc = new Scanner(input)) {
 			while (sc.hasNextLine()) {
@@ -29,17 +34,23 @@ public class ItemBasedRecommender {
 				lineScanner.useDelimiter(",");
 				int userId = lineScanner.nextInt();
 				int movieId = lineScanner.nextInt();
-				short rating = lineScanner.nextShort();
+				int rating = lineScanner.nextInt();
 				lineScanner.close();
-				short partitionNumber = (short)MagicNumbers.getRandomPartition();
-				ratings[userId-1][movieId-1] = rating;
-				partition[userId-1][movieId-1] = partitionNumber;
+				int partitionNumber = MagicNumbers.getRandomPartition();
+				
+				Map<Integer, Pair<Integer, Integer>> temp = ratings.get(userId);
+				if (temp == null) {
+					temp = new HashMap<>();
+					temp.put(movieId, new Pair<Integer, Integer>(rating, partitionNumber));
+					ratings.put(userId, temp);
+				} else {
+					temp.put(movieId, new Pair<Integer, Integer>(rating, partitionNumber));
+				}
 			}			
 		} catch (FileNotFoundException e) {
 			System.err.println(e);
 			System.exit(1);
 		}
-		System.out.println("Matrix construction complete");
 		
 		// prepare files
 		for (int p = 0;p < MagicNumbers.NUMBER_OF_PARTITIONS;p++) {
@@ -48,16 +59,13 @@ public class ItemBasedRecommender {
 					BufferedWriter testSetWriter = new BufferedWriter(new FileWriter(new File("test_set_"+p)));
 					BufferedWriter groundTruthWriter= new BufferedWriter(new FileWriter(new File("ground_truth_"+p)));
 					) {
-				for (int i = 0;i < MagicNumbers.NUMBER_OF_USERS;i++) {
-					for (int j = 0;j < MagicNumbers.NUMBER_OF_MOVIES;j++) {
-						if (ratings[i][j] == 0) { continue; }
-						if (partition[i][j] == p) {
-							// test set
-							testSetWriter.write(""+(i+1)+","+(j+1)+"\n");
-							groundTruthWriter.write(ratings[i][j]+"\n");
+				for (Entry<Integer, Map<Integer, Pair<Integer, Integer>>> user : ratings.entrySet()) {
+					for (Entry<Integer, Pair<Integer, Integer>> movie : user.getValue().entrySet()) {
+						if (movie.getValue().getSecond() == p) {
+							testSetWriter.write(""+user.getKey()+","+movie.getKey()+"\n");
+							groundTruthWriter.write(movie.getValue().getFirst()+"\n");
 						} else {
-							// traning set
-							trainingSetWriter.write(""+(i+1)+","+(j+1)+","+ratings[i][j]+",0\n");
+							trainingSetWriter.write(""+user.getKey()+","+movie.getKey()+","+movie.getValue().getFirst()+",0\n");
 						}
 					}
 				}
@@ -66,7 +74,6 @@ public class ItemBasedRecommender {
 				System.exit(1);
 			}
 		}
-		System.out.println("Files Preparation Complete");
 		
 		// cross validation
 		double totalError = 0;
@@ -97,11 +104,13 @@ public class ItemBasedRecommender {
 		
 	}
 	
+	
+	
 	public void predict(String similarityMethod, String inputFilePath, String toBeRatedFilePath,
 			String outputFilePath) {
-
-		// build matrix and read data
-		short[][] ratings = new short[MagicNumbers.NUMBER_OF_USERS][MagicNumbers.NUMBER_OF_MOVIES];
+		
+		// read data
+		Map<Integer, Map<Integer, Integer>> ratings = new HashMap<Integer, Map<Integer,Integer>>(); // movie->(user, rating)
 		File ratingsFile = new File(inputFilePath);
 		try (Scanner sc = new Scanner(ratingsFile)) {
 			while (sc.hasNextLine()) {
@@ -109,161 +118,211 @@ public class ItemBasedRecommender {
 				if (line.length() < 4) { continue; }
 				Scanner lineScanner = new Scanner(line);
 				lineScanner.useDelimiter(",");
-				int userId = lineScanner.nextInt();
-				int movieId = lineScanner.nextInt();
-				short rating = lineScanner.nextShort();
-				ratings[userId-1][movieId-1] = rating;
+				int userId = lineScanner.nextInt()-1;
+				int movieId = lineScanner.nextInt()-1;
+				int rating = lineScanner.nextInt();
+				Map<Integer, Integer> temp = ratings.get(movieId);
+				if (temp == null) {
+					temp = new HashMap<Integer, Integer>();
+					temp.put(userId, rating);
+					ratings.put(movieId, temp);
+				} else {
+					temp.put(userId, rating);
+				}
 				lineScanner.close();
 			}
 		} catch (FileNotFoundException e) {
 			System.err.println(e);
 			System.exit(1);
 		}
+		System.out.println("Ratings file reading complete");
 		
-		// count average rating
-		float[] averageRatingPerMovie = new float[MagicNumbers.NUMBER_OF_MOVIES];
-		short[] numberOfRatesPerMovie = new short[MagicNumbers.NUMBER_OF_MOVIES];
-		for (int i = 0;i < MagicNumbers.NUMBER_OF_MOVIES;i++) {
-			int numberOfUsersVotingCurrentMovie = 0;
-			int sumOfRatings = 0;
-			for (int j = 0;j < MagicNumbers.NUMBER_OF_USERS;j++) {
-				if (ratings[j][i] != 0) {
-					numberOfUsersVotingCurrentMovie++;
-					sumOfRatings += ratings[j][i];
-				}
-			}
-			numberOfRatesPerMovie[i] = (short)numberOfUsersVotingCurrentMovie;
-			if (numberOfUsersVotingCurrentMovie == 0) {
-				averageRatingPerMovie[i] = MagicNumbers.DEFAULT_MOVIE_RATING;
-			} else {
-				averageRatingPerMovie[i] = (float)sumOfRatings / numberOfUsersVotingCurrentMovie;
-			}
-		}
-		float[] averageRatingPerUser = new float[MagicNumbers.NUMBER_OF_USERS];
-		for (int i = 0;i < MagicNumbers.NUMBER_OF_USERS;i++) {
-			int count = 0;
-			int sumOfRatings = 0;
-			for (int j = 0;j < MagicNumbers.NUMBER_OF_MOVIES;j++) {
-				if (ratings[i][j] != 0) {
-					count++;
-					sumOfRatings += ratings[i][j];
-				}
-			}
-			if (count == 0) {
-				averageRatingPerUser[i] = MagicNumbers.DEFAULT_MOVIE_RATING;
-			} else {
-				averageRatingPerUser[i] = (float)sumOfRatings / count;
-			}
-		}
 		
-		// build item similarity matrix
-		float[][] itemSimilarityMatrix = new float[MagicNumbers.NUMBER_OF_MOVIES][MagicNumbers.NUMBER_OF_MOVIES];
-		switch (similarityMethod) {
-		case "Jaccard":
-			for (int movie1 = 0;movie1 < MagicNumbers.NUMBER_OF_MOVIES;movie1++) {
-				for (int movie2 = 0;movie2 < MagicNumbers.NUMBER_OF_MOVIES;movie2++) {
-					if (movie1 >= movie2) { continue; }
+		// count average rating for each movie
+		Map<Integer, Double> averageRating = new HashMap<Integer, Double>();
+		for (Entry<Integer, Map<Integer, Integer>> entry : ratings.entrySet()) {
+			int sumOfRatings = 0;
+			for (Entry<Integer, Integer> e : entry.getValue().entrySet()) {
+				sumOfRatings += e.getValue();
+			}
+			averageRating.put(entry.getKey(), ((double)sumOfRatings)/entry.getValue().size());
+		}
+		System.out.println("Average rating counting complete");
+		
+		// compute movie similarity
+		Map<Integer, Map<Integer, Double>> similarity = new HashMap<>();
+		for (Entry<Integer, Map<Integer, Integer>> movie1 : ratings.entrySet()) {
+			for (Entry<Integer, Map<Integer, Integer>> movie2 : ratings.entrySet()) {
+				if (movie1 == movie2) { continue; }
+				if (similarity.get(movie1.getKey())!=null && similarity.get(movie1.getKey()).get(movie2.getKey())!=null) { continue; }
+				switch (similarityMethod) {
+				case "Jaccard": {
+					int numberOfUsersRatingMovie1 = movie1.getValue().size();
+					int numberOfUsersRatingMovie2 = movie2.getValue().size();
 					int numberOfUsersRatingBothMovies = 0;
-					for (int user = 0;user < MagicNumbers.NUMBER_OF_USERS;user++) {
-						if (ratings[user][movie1] != 0 && ratings[user][movie2] != 0) {
-							numberOfUsersRatingBothMovies++;
-						}
-					}
+					
+					Set<Integer> usersRatingMovie1 = new HashSet<Integer>(movie1.getValue().keySet());
+					Set<Integer> usersRatingMovie2 = new HashSet<Integer>(movie2.getValue().keySet());
+					usersRatingMovie1.retainAll(usersRatingMovie2);
+					numberOfUsersRatingBothMovies = usersRatingMovie1.size();
 					if (numberOfUsersRatingBothMovies == 0) { continue; }
-					int total = numberOfRatesPerMovie[movie1] + numberOfRatesPerMovie[movie2] - numberOfUsersRatingBothMovies;
-					itemSimilarityMatrix[movie1][movie2] = (float)numberOfUsersRatingBothMovies / total;
-					itemSimilarityMatrix[movie2][movie1] = itemSimilarityMatrix[movie1][movie2];
+					
+					double jaccardSimilarity = (double)numberOfUsersRatingBothMovies / 
+							(numberOfUsersRatingMovie1+numberOfUsersRatingMovie2-numberOfUsersRatingBothMovies);
+					
+					Map<Integer, Double> temp = similarity.get(movie1.getKey());
+					if (temp == null) {
+						temp = new HashMap<>();
+						temp.put(movie2.getKey(), jaccardSimilarity);
+						similarity.put(movie1.getKey(), temp);
+					} else {
+						temp.put(movie2.getKey(), jaccardSimilarity);
+					}
+					
+					temp = similarity.get(movie2.getKey());
+					if (temp == null) {
+						temp = new HashMap<>();
+						temp.put(movie1.getKey(), jaccardSimilarity);
+						similarity.put(movie2.getKey(), temp);
+					} else {
+						temp.put(movie1.getKey(), jaccardSimilarity);
+					}
+					
+					break;
 				}
-			}
-			break;
-		case "Pearson":
-			for (int movie1 = 0;movie1 < MagicNumbers.NUMBER_OF_MOVIES;movie1++) {
-				for (int movie2 = 0;movie2 < MagicNumbers.NUMBER_OF_MOVIES;movie2++) {
-					if (movie1 >= movie2) { continue; }
-					int numberOfUsersRatingBothMovies = 0;
+				case "Pearson": {
 					double factor1 = 0;
 					double factor2 = 0;
 					double factor3 = 0;
-					for (int user = 0;user < MagicNumbers.NUMBER_OF_USERS;user++) {
-						if (ratings[user][movie1] != 0 && ratings[user][movie2] != 0) {
-							numberOfUsersRatingBothMovies++;
-							factor1 += (ratings[user][movie1]-averageRatingPerMovie[movie1])*(ratings[user][movie2]-averageRatingPerMovie[movie2]);
-							factor2 += Math.pow(ratings[user][movie1]-averageRatingPerMovie[movie1],2);
-							factor3 += Math.pow(ratings[user][movie2]-averageRatingPerMovie[movie2],2);
-						}
+					
+					Set<Integer> usersRatingBothMovies = new HashSet<Integer>(movie1.getValue().keySet());
+					Set<Integer> usersRatingMovie2 = new HashSet<Integer>(movie2.getValue().keySet());
+					usersRatingBothMovies.retainAll(usersRatingMovie2);
+					if (usersRatingBothMovies.size() == 0) { continue; }
+					
+					for (Integer userId : usersRatingBothMovies) {
+						int rating1 = ratings.get(movie1.getKey()).get(userId);
+						int rating2 = ratings.get(movie2.getKey()).get(userId);
+						factor1 += (rating1-averageRating.get(movie1.getKey())+MagicNumbers.EPSILON)*(rating2-averageRating.get(movie2.getKey())+MagicNumbers.EPSILON);
+						factor2 += Math.pow((rating1-averageRating.get(movie1.getKey())+MagicNumbers.EPSILON), 2);
+						factor3 += Math.pow((rating1-averageRating.get(movie1.getKey())+MagicNumbers.EPSILON), 2);
 					}
-					if (numberOfUsersRatingBothMovies == 0) { continue; }
 					factor2 = Math.sqrt(factor2);
 					factor3 = Math.sqrt(factor3);
-					if (factor1 == 0) {
-						itemSimilarityMatrix[movie1][movie2] = 0.5f;
+					
+					double cosineSimilarity = factor1/(factor2*factor3);
+					
+					Map<Integer, Double> temp = similarity.get(movie1.getKey());
+					if (temp == null) {
+						temp = new HashMap<>();
+						temp.put(movie2.getKey(), cosineSimilarity);
+						similarity.put(movie1.getKey(), temp);
 					} else {
-						itemSimilarityMatrix[movie1][movie2] = (float)(factor1/(factor2*factor3));
-						itemSimilarityMatrix[movie2][movie1] = itemSimilarityMatrix[movie1][movie2];
+						temp.put(movie2.getKey(), cosineSimilarity);
 					}
+					
+					temp = similarity.get(movie2.getKey());
+					if (temp == null) {
+						temp = new HashMap<>();
+						temp.put(movie1.getKey(), cosineSimilarity);
+						similarity.put(movie2.getKey(), temp);
+					} else {
+						temp.put(movie1.getKey(), cosineSimilarity);
+					}
+					
+					break;
 				}
-			}
-			break;
-		case "cosine":
-			for (int movie1 = 0;movie1 < MagicNumbers.NUMBER_OF_MOVIES;movie1++) {
-				for (int movie2 = 0;movie2 < MagicNumbers.NUMBER_OF_MOVIES;movie2++) {
-					if (movie1 >= movie2) { continue; }
-					int numberOfUsersRatingBothMovies = 0;
+				case "cosine": {
 					double factor1 = 0;
 					double factor2 = 0;
 					double factor3 = 0;
-					for (int user = 0;user < MagicNumbers.NUMBER_OF_USERS;user++) {
-						if (ratings[user][movie1] != 0 && ratings[user][movie2] != 0) {
-							numberOfUsersRatingBothMovies++;
-							factor1 += (ratings[user][movie1])*(ratings[user][movie2]);
-							factor2 += Math.pow(ratings[user][movie1],2);
-							factor3 += Math.pow(ratings[user][movie2],2);
-						}
+					
+					Set<Integer> usersRatingBothMovies = new HashSet<Integer>(movie1.getValue().keySet());
+					Set<Integer> usersRatingMovie2 = new HashSet<Integer>(movie2.getValue().keySet());
+					usersRatingBothMovies.retainAll(usersRatingMovie2);
+					if (usersRatingBothMovies.size() == 0) { continue; }
+					
+					for (Integer userId : usersRatingBothMovies) {
+						int rating1 = ratings.get(movie1.getKey()).get(userId);
+						int rating2 = ratings.get(movie2.getKey()).get(userId);
+						factor1 += rating1*rating2;
+						factor2 += Math.pow(rating1, 2);
+						factor3 += Math.pow(rating2, 2);
 					}
-					if (numberOfUsersRatingBothMovies == 0) { continue; }
 					factor2 = Math.sqrt(factor2);
 					factor3 = Math.sqrt(factor3);
-					if (factor1 == 0) {
-						itemSimilarityMatrix[movie1][movie2] = 0.5f;
+					
+					double cosineSimilarity = factor1/(factor2*factor3);
+					
+					Map<Integer, Double> temp = similarity.get(movie1.getKey());
+					if (temp == null) {
+						temp = new HashMap<>();
+						temp.put(movie2.getKey(), cosineSimilarity);
+						similarity.put(movie1.getKey(), temp);
 					} else {
-						itemSimilarityMatrix[movie1][movie2] = (float)(factor1/(factor2*factor3));
-						itemSimilarityMatrix[movie2][movie1] = itemSimilarityMatrix[movie1][movie2];
+						temp.put(movie2.getKey(), cosineSimilarity);
 					}
+					
+					temp = similarity.get(movie2.getKey());
+					if (temp == null) {
+						temp = new HashMap<>();
+						temp.put(movie1.getKey(), cosineSimilarity);
+						similarity.put(movie2.getKey(), temp);
+					} else {
+						temp.put(movie1.getKey(), cosineSimilarity);
+					}
+					
+					break;
+				}
+				default:
+					break;
 				}
 			}
-			break;
-		default:
-			System.err.println("ERROR");
 		}
-		System.out.println("Item Similarity Matrix complete");
+		System.out.println("Similarity computation complete");
 		
 		// read toBeRated file
-		// make prediction one by one
 		List<Double> prediction = new ArrayList<>();
 		File toBeRatedFile = new File(toBeRatedFilePath);
-		try (Scanner sc = new Scanner(toBeRatedFile);) {
+		try (Scanner sc = new Scanner(toBeRatedFile)) {
 			while (sc.hasNextLine()) {
 				String line = sc.nextLine();
-				//System.out.println(line);
 				int index = line.indexOf(",");
 				if (index == -1) { continue; }
-				int toRateUserId = Integer.parseInt(line.substring(0, index))-1;
-				int toRateMovieId = Integer.parseInt(line.substring(index+1))-1;
+				int toRateUser = Integer.parseInt(line.substring(0, index))-1;
+				int toRateMovie = Integer.parseInt(line.substring(index+1))-1;
 				
-				// calculate similarity between items
-				List<Pair<Integer, Double>> itemSimilarity = new ArrayList<>();
-				for (int movie = 0;movie < MagicNumbers.NUMBER_OF_MOVIES;movie++) {
-					if (ratings[toRateUserId][movie] != 0) {
-						itemSimilarity.add(new Pair<Integer, Double>(movie, (double)itemSimilarityMatrix[movie][toRateMovieId]));
+				// find movies that are similar to toRateMovie
+				// and rated by toRateUser
+				List<Pair<Integer, Double>> similarMovies = new ArrayList<>();
+				if (similarity.get(toRateMovie) == null) {
+					if (averageRating.get(toRateMovie) == null) {
+						prediction.add(MagicNumbers.DEFAULT_MOVIE_RATING);
+						//System.out.println(toRateMovie);
+					} else {
+						prediction.add(averageRating.get(toRateMovie));
 					}
+					continue;
+				}
+				for (Entry<Integer, Double> movie : similarity.get(toRateMovie).entrySet()) {
+					if (movie.getValue() <= 0) { continue; }
+					if (ratings.get(movie.getKey()).get(toRateUser) == null) { continue; }
+					similarMovies.add(new Pair<Integer, Double>(movie.getKey(), movie.getValue()));
+				}
+				if (similarMovies.size() == 0) {
+					if (averageRating.get(toRateMovie) == null) {
+						prediction.add(MagicNumbers.DEFAULT_MOVIE_RATING);
+						//System.out.println(toRateMovie);
+					} else {
+						prediction.add(averageRating.get(toRateMovie));
+					}
+					continue;
 				}
 				
-				// sort 'userSimilarity' by similarity
-				Collections.sort(itemSimilarity, (e1,e2)->{
-					/*if (Math.abs(e1.getSecond()-e2.getSecond()) < 0.00001) {
-						return 0;
-					} else */if (e1.getSecond() > e2.getSecond()) {
-						return -1;	
+				// sort similarUsers by similarity
+				Collections.sort(similarMovies, (e1, e2)->{
+					if (e1.getSecond() > e2.getSecond()) {
+						return -1;
 					} else if (e1.getSecond() < e2.getSecond()) {
 						return 1;
 					} else {
@@ -271,45 +330,47 @@ public class ItemBasedRecommender {
 					}
 				});
 				
+				// choose number of neighbors to predict
+				int neighbors = (int)(similarMovies.size() * MagicNumbers.PERCENTAGE_OF_NEIGHBORS)+1;
+				if (neighbors < MagicNumbers.LEAST_NUMBER_OF_NEIGHBORS) {
+					neighbors = Math.min(MagicNumbers.LEAST_NUMBER_OF_NEIGHBORS, similarMovies.size());
+				}
 				
-				// choose neighbors to predict
-				int neighbors = itemSimilarity.size();
-				if (neighbors == 0) { 
-					prediction.add((double)averageRatingPerMovie[toRateMovieId]);
-					continue;
-				}
-				neighbors = (int)(neighbors * MagicNumbers.PERCENTAGE_OF_NEIGHBORS)+1;
-				if (neighbors > MagicNumbers.LEAST_NUMBER_OF_NEIGHBORS) {
-					neighbors = MagicNumbers.LEAST_NUMBER_OF_NEIGHBORS;
-				}
+				// predict value
 				double normalization = 0;
 				double value = 0;
 				for (int i = 0;i < neighbors;i++) {
-					normalization += itemSimilarity.get(i).getSecond();
-					value += itemSimilarity.get(i).getSecond()*(ratings[toRateUserId][itemSimilarity.get(i).getFirst()]-averageRatingPerMovie[itemSimilarity.get(i).getFirst()]);
+					normalization += similarMovies.get(i).getSecond();
+					value += similarMovies.get(i).getSecond()*
+							(ratings.get(similarMovies.get(i).getFirst()).get(toRateUser)-
+							averageRating.get(similarMovies.get(i).getFirst()));
 				}
-				//temp.write(""+neighbors+" "+averageRatingPerMovie[toRateMovieId]+" "+value+" "+normalization+" "+(value/normalization)+"\n");
-				if (normalization == 0) {
-					prediction.add((double)averageRatingPerMovie[toRateMovieId]);
+				//System.out.println(neighbors+" "+averageRating[toRateUserId]+" "+value+" "+normalization+" "+value/normalization);
+				Double averageForToRateMovie = averageRating.get(toRateMovie);
+				if (averageForToRateMovie == null) {
+					prediction.add(MagicNumbers.DEFAULT_MOVIE_RATING + value/normalization);
 				} else {
-					prediction.add(averageRatingPerMovie[toRateMovieId]+value/normalization);
+					prediction.add(averageForToRateMovie.doubleValue() + value/normalization);
 				}
 			}
-		} catch (Exception e) {
+		} catch (FileNotFoundException e) {
 			System.err.println(e);
 			System.exit(1);
 		}
+		System.out.println("Prediction complete");
 		
 		// output prediction
 		File output = new File(outputFilePath);
 		try (BufferedWriter bw = new BufferedWriter(new FileWriter(output))) {
-			for (double d : prediction) {
+			for (Double d : prediction) {
 				bw.write(d+"\n");
 			}
 		} catch (IOException e) {
 			System.err.println(e);
 			System.exit(1);
 		}
+		System.out.println("Output complete");
+		
 	}
 	
 }

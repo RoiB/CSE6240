@@ -9,12 +9,14 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.Map.Entry;
 import java.util.regex.Pattern;
 
 import movie.configuration.MagicNumbers;
@@ -23,9 +25,9 @@ import movie.util.Pair;
 public class HeuristicRecommender {
 	public void validate(String inputFilePath, String usersFilePath, String moviesFilePath) {
 		
+		
 		// read data and assign each value a partition
-		short[][] ratings = new short[MagicNumbers.NUMBER_OF_USERS][MagicNumbers.NUMBER_OF_MOVIES];
-		short[][] partition = new short[MagicNumbers.NUMBER_OF_USERS][MagicNumbers.NUMBER_OF_MOVIES];
+		Map<Integer, Map<Integer, Pair<Integer, Integer>>> ratings = new HashMap<>();
 		File input = new File(inputFilePath);
 		try (Scanner sc = new Scanner(input)) {
 			while (sc.hasNextLine()) {
@@ -35,17 +37,23 @@ public class HeuristicRecommender {
 				lineScanner.useDelimiter(",");
 				int userId = lineScanner.nextInt();
 				int movieId = lineScanner.nextInt();
-				short rating = lineScanner.nextShort();
+				int rating = lineScanner.nextInt();
 				lineScanner.close();
-				short partitionNumber = (short)MagicNumbers.getRandomPartition();
-				ratings[userId-1][movieId-1] = rating;
-				partition[userId-1][movieId-1] = partitionNumber;
+				int partitionNumber = MagicNumbers.getRandomPartition();
+				
+				Map<Integer, Pair<Integer, Integer>> temp = ratings.get(userId);
+				if (temp == null) {
+					temp = new HashMap<>();
+					temp.put(movieId, new Pair<Integer, Integer>(rating, partitionNumber));
+					ratings.put(userId, temp);
+				} else {
+					temp.put(movieId, new Pair<Integer, Integer>(rating, partitionNumber));
+				}
 			}			
 		} catch (FileNotFoundException e) {
 			System.err.println(e);
 			System.exit(1);
 		}
-		System.out.println("Matrix construction complete");
 		
 		// prepare files
 		for (int p = 0;p < MagicNumbers.NUMBER_OF_PARTITIONS;p++) {
@@ -54,16 +62,13 @@ public class HeuristicRecommender {
 					BufferedWriter testSetWriter = new BufferedWriter(new FileWriter(new File("test_set_"+p)));
 					BufferedWriter groundTruthWriter= new BufferedWriter(new FileWriter(new File("ground_truth_"+p)));
 					) {
-				for (int i = 0;i < MagicNumbers.NUMBER_OF_USERS;i++) {
-					for (int j = 0;j < MagicNumbers.NUMBER_OF_MOVIES;j++) {
-						if (ratings[i][j] == 0) { continue; }
-						if (partition[i][j] == p) {
-							// test set
-							testSetWriter.write(""+(i+1)+","+(j+1)+"\n");
-							groundTruthWriter.write(ratings[i][j]+"\n");
+				for (Entry<Integer, Map<Integer, Pair<Integer, Integer>>> user : ratings.entrySet()) {
+					for (Entry<Integer, Pair<Integer, Integer>> movie : user.getValue().entrySet()) {
+						if (movie.getValue().getSecond() == p) {
+							testSetWriter.write(""+user.getKey()+","+movie.getKey()+"\n");
+							groundTruthWriter.write(movie.getValue().getFirst()+"\n");
 						} else {
-							// traning set
-							trainingSetWriter.write(""+(i+1)+","+(j+1)+","+ratings[i][j]+",0\n");
+							trainingSetWriter.write(""+user.getKey()+","+movie.getKey()+","+movie.getValue().getFirst()+",0\n");
 						}
 					}
 				}
@@ -72,7 +77,6 @@ public class HeuristicRecommender {
 				System.exit(1);
 			}
 		}
-		System.out.println("Files Preparation Complete");
 		
 		// cross validation
 		double totalError = 0;
@@ -108,7 +112,7 @@ public class HeuristicRecommender {
 			String toBeRatedFilePath, String outputFilePath) {
 		
 		// read matrix
-		short[][] ratings = new short[MagicNumbers.NUMBER_OF_USERS][MagicNumbers.NUMBER_OF_MOVIES];
+		Map<Integer, Map<Integer, Integer>> ratings = new HashMap<>();
 		File ratingsFile = new File(ratingsFilePath);
 		try (Scanner sc = new Scanner(ratingsFile)) {
 			while (sc.hasNextLine()) {
@@ -116,10 +120,19 @@ public class HeuristicRecommender {
 				if (line.length() < 4) { continue; }
 				Scanner lineScanner = new Scanner(line);
 				lineScanner.useDelimiter(",");
-				int userId = lineScanner.nextInt();
-				int movieId = lineScanner.nextInt();
-				short rating = lineScanner.nextShort();
-				ratings[userId-1][movieId-1] = rating;
+				int userId = lineScanner.nextInt()-1;
+				int movieId = lineScanner.nextInt()-1;
+				int rating = lineScanner.nextInt();
+				
+				Map<Integer, Integer> temp = ratings.get(userId);
+				if (temp == null) {
+					temp = new HashMap<>();
+					temp.put(movieId, rating);
+					ratings.put(userId, temp); 
+				} else {
+					temp.put(movieId, rating);
+				}
+				
 				lineScanner.close();
 			}
 		} catch (FileNotFoundException e) {
@@ -157,7 +170,7 @@ public class HeuristicRecommender {
 		
 		// read user
 		// for each user, build UserProfile
-		UserProfile[] userProfiles = new UserProfile[MagicNumbers.NUMBER_OF_USERS];
+		Map<Integer, UserProfile> userProfiles = new HashMap<>();
 		File usersFile = new File(usersFilePath);
 		try (Scanner sc = new Scanner(usersFile)) {
 			while (sc.hasNextLine()) {
@@ -180,19 +193,15 @@ public class HeuristicRecommender {
 				int[] countPerGenre = new int[MovieGenre.NUMBER_OF_GENRES];
 				double[] averagePerGenre = new double[MovieGenre.NUMBER_OF_GENRES];
 				double total = 0;
-				int count = 0;
-				for (int movie = 0;movie < MagicNumbers.NUMBER_OF_MOVIES;movie++) {
-					if (ratings[userId][movie] != 0) {
-						count++;
-						total += ratings[userId][movie];
-						if (movieGenres.get(movie) == null) { continue; }
-						for (int genreId : movieGenres.get(movie)) {
-							countPerGenre[genreId]++;
-							totalPerGenre[genreId] += ratings[userId][movie];
-						}
+				for (Entry<Integer, Integer> movie : ratings.get(userId).entrySet()) {
+					total += movie.getValue();
+					if (movieGenres.get(movie.getKey()) == null) { continue; }
+					for (int genreId : movieGenres.get(movie.getKey())) {
+						countPerGenre[genreId]++;
+						totalPerGenre[genreId] += ratings.get(userId).get(movie.getKey());
 					}
 				}
-				double average = total/count;
+				double average = total/ratings.get(userId).size();
 				for (int ii = 0;ii < MovieGenre.NUMBER_OF_GENRES;ii++) {
 					if (countPerGenre[ii] == 0) {
 						averagePerGenre[ii] = average;
@@ -202,8 +211,8 @@ public class HeuristicRecommender {
 				}
 				
 				// build user profile
-				UserProfile currentUserProfile = new UserProfile(isMale, age, occupation, average, averagePerGenre, count);
-				userProfiles[userId] = currentUserProfile;
+				UserProfile currentUserProfile = new UserProfile(isMale, age, occupation, average, averagePerGenre, ratings.get(userId).size());
+				userProfiles.put(userId, currentUserProfile);
 				//System.out.println(userId+" "+isMale+" "+occupation+" "+average+" "+averagePerGenre[0]);
 			}
 		} catch (FileNotFoundException e) {
@@ -212,39 +221,35 @@ public class HeuristicRecommender {
 		}
 		System.out.println("Users Information Loaded.");
 		
+		
 		// buildUserSimilarityMatrix
 		// user-based similarity * amplification
-		double[][] userSimilarityMatrix = new double[MagicNumbers.NUMBER_OF_USERS][MagicNumbers.NUMBER_OF_USERS];
-		for (int user1 = 0;user1 != MagicNumbers.NUMBER_OF_USERS-1;user1++) {
-			for (int user2 = user1+1;user2 != MagicNumbers.NUMBER_OF_USERS;user2++) {
-				double amplification = userProfiles[user1].similarityAmplify(userProfiles[user2]);
-				/*double factor1 = 0;
-				double factor2 = 0;
-				double factor3 = 0;
-				int numberOfMoviesRatedByBothUsers = 0;
-				for (int movie = 0;movie < MagicNumbers.NUMBER_OF_MOVIES;movie++) {
-					if (ratings[user1][movie] != 0 && ratings[user2][movie] != 0) {
-						numberOfMoviesRatedByBothUsers++;
-						factor1 += (ratings[user1][movie]-userProfiles[user1].getOverallAverage())*
-								(ratings[user2][movie]-userProfiles[user2].getOverallAverage());
-						factor2 += Math.pow(ratings[user1][movie]-userProfiles[user1].getOverallAverage(),2);
-						factor3 += Math.pow(ratings[user2][movie]-userProfiles[user2].getOverallAverage(),2);
-					}
-				}
-				if (numberOfMoviesRatedByBothUsers == 0) { continue; }
-				factor2 = Math.sqrt(factor2);
-				factor3 = Math.sqrt(factor3);
-				if (factor1 == 0) {
-					userSimilarityMatrix[user1][user2] = 0.5*amplification;
-					userSimilarityMatrix[user2][user1] = 0.5*amplification;
+		Map<Integer, Map<Integer, Double>> similarity = new HashMap<>();
+		for (Entry<Integer, UserProfile> userProfile1 : userProfiles.entrySet()) {
+			for (Entry<Integer, UserProfile> userProfile2 : userProfiles.entrySet()) {
+				if (userProfile1 == userProfile2) { continue; }
+				double amplification = userProfile1.getValue().similarityAmplify(userProfile2.getValue());
+				
+				Map<Integer, Double> temp = similarity.get(userProfile1.getKey());
+				if (temp == null) {
+					temp = new HashMap<>();
+					temp.put(userProfile2.getKey(), amplification);
+					similarity.put(userProfile1.getKey(), temp);
 				} else {
-					userSimilarityMatrix[user1][user2] = factor1/(factor2*factor3)*amplification;
-					userSimilarityMatrix[user2][user1] = factor1/(factor2*factor3)*amplification;
-				}*/
-				userSimilarityMatrix[user1][user2] = amplification;
-				userSimilarityMatrix[user2][user1] = amplification;
+					temp.put(userProfile2.getKey(), amplification);
+				}
+				
+				temp = similarity.get(userProfile2.getKey());
+				if (temp == null) {
+					temp = new HashMap<>();
+					temp.put(userProfile1.getKey(), amplification);
+					similarity.put(userProfile2.getKey(), temp);
+				} else {
+					temp.put(userProfile1.getKey(), amplification);
+				}
 			}
 		}
+		
 		
 		// read toBeRatedFile
 		// make prediction one by one
@@ -254,15 +259,24 @@ public class HeuristicRecommender {
 				String line = sc.nextLine();
 				int index = line.indexOf(",");
 				if (index == -1) { continue; }
-				int toRateUserId = Integer.parseInt(line.substring(0, index))-1;
-				int toRateMovieId = Integer.parseInt(line.substring(index+1))-1;
+				int toRateUser = Integer.parseInt(line.substring(0, index))-1;
+				int toRateMovie = Integer.parseInt(line.substring(index+1))-1;
 				
 				List<Pair<Integer, Double>> possibleNeighbors = new ArrayList<>();
-				for (int user = 0;user < MagicNumbers.NUMBER_OF_USERS;user++) {
-					if (ratings[user][toRateMovieId] != 0) {
-						possibleNeighbors.add(new Pair<Integer, Double>(user,userSimilarityMatrix[user][toRateUserId]));
-					}
+				if (similarity.get(toRateUser) == null) {
+					prediction.add(userProfiles.get(toRateUser).getOverallAverage());
+					continue;
 				}
+				for (Entry<Integer, Double> user : similarity.get(toRateUser).entrySet()) {
+					if (user.getValue() <= MagicNumbers.LEAST_AMPLIFICATION) { continue; }
+					if (ratings.get(user.getKey()).get(toRateMovie) == null) { continue; }
+					possibleNeighbors.add(new Pair<Integer, Double>(user.getKey(), user.getValue()));
+				}
+				if (possibleNeighbors.size() == 0) {
+					prediction.add(userProfiles.get(toRateUser).getOverallAverage());
+					continue;
+				}
+				
 				Collections.sort(possibleNeighbors, (e1, e2)->{
 					if (e1.getSecond() > e2.getSecond()) {
 						return -1;
@@ -273,31 +287,30 @@ public class HeuristicRecommender {
 					}
 				});
 
-				// choose neighbors
-				int neighbors = possibleNeighbors.size();
-				if (neighbors == 0) {
-					prediction.add(userProfiles[toRateUserId].getOverallAverage());
-					continue;
-				}
-				neighbors = (int)(neighbors * MagicNumbers.PERCENTAGE_OF_NEIGHBORS)+1;
-				if (neighbors > MagicNumbers.LEAST_NUMBER_OF_NEIGHBORS) {
-					neighbors = MagicNumbers.LEAST_NUMBER_OF_NEIGHBORS;
+ 				// choose number of neighbors to predict
+				int neighbors = (int)(possibleNeighbors.size() * MagicNumbers.PERCENTAGE_OF_NEIGHBORS)+1;
+				if (neighbors < MagicNumbers.LEAST_NUMBER_OF_NEIGHBORS) {
+					neighbors = Math.min(MagicNumbers.LEAST_NUMBER_OF_NEIGHBORS, possibleNeighbors.size());
 				}
 				
-				// calculate prediction
+				// predict value
 				double normalization = 0;
 				double value = 0;
-				for (int neighbor = 0;neighbor != neighbors;neighbor++) {
-					normalization += possibleNeighbors.get(neighbor).getSecond();
-					value += possibleNeighbors.get(neighbor).getSecond()*
-							(ratings[possibleNeighbors.get(neighbor).getFirst()][toRateMovieId]-
-									userProfiles[possibleNeighbors.get(neighbor).getFirst()].getOverallAverage());
+				for (int i = 0;i < neighbors;i++) {
+					normalization += possibleNeighbors.get(i).getSecond();
+					value += possibleNeighbors.get(i).getSecond()*
+							(ratings.get(possibleNeighbors.get(i).getFirst()).get(toRateMovie)-
+							userProfiles.get(possibleNeighbors.get(i).getFirst()).getOverallAverage());
 				}
-				if (normalization == 0) {
-					prediction.add(userProfiles[toRateUserId].getOverallAverage());
+				//System.out.println(neighbors+" "+averageRating[toRateUserId]+" "+value+" "+normalization+" "+value/normalization);
+				Double averageForToRateUser = userProfiles.get(toRateUser).getOverallAverage();
+				if (averageForToRateUser == null) {
+					prediction.add(MagicNumbers.DEFAULT_MOVIE_RATING + value/normalization);
 				} else {
-					prediction.add(userProfiles[toRateUserId].getOverallAverage()+value/normalization);
+					prediction.add(averageForToRateUser.doubleValue() + value/normalization);
 				}
+ 
+
 			}
 		} catch (FileNotFoundException e) {
 			System.out.println(e);

@@ -14,7 +14,7 @@ import java.util.Scanner;
 public class PageRank {
 	
 	public static double PRECISION = 0.000001;
-	public static double ALPHA = 0.85;
+	public static double ALPHA = 1;
 	
 	public void start() {
 		Scanner sc = new Scanner(System.in);

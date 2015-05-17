@@ -1,0 +1,30 @@
+Explain how you get the result3 using what methods and which type of similarity and 
+what information. Explain why using these settings will get the best result
+
+
+I build a user profile for each user using user information and movie information.
+The movies file is separated considered according to their genres. Their genres are
+translated into integers in the system. Each movie corresponds to a set of integers
+of genres except that some movies are missing genres. Movies of each genre are 
+regarded separately. That is, in the original user-based approach, an average rating
+is computed to each user. And now, several average ratings, each corresponds to a 
+genre, is computed. These average ratings are saved in each user’s profile.
+Besides, each user profile contains gender, age and occupation.
+I make use of user profile similarity and pure user-based approach to calculate
+similarity between two users. If they are similar in both user profiles and rating
+history, then they have a higher possibility to rate other files.
+The similarity calculation between two user profiles is based on observation and
+intuition. I discuss with a psychology student to give weights to each attribute.
+
+Specifically, initially two user profiles have similarity (called amplification) 1.
+If they are same in gender, then amplification *= 5
+If they are same in occupation, then amplification *= 1.1
+More difference in ages, more likely two users tend to prefer different movies,
+so amplification *= (5 - 0.05 * abs(age1-age2))
+Besides, average ratings for each genre of movies are also taken into consideration:
+amplification *= 1 + (0.5 - diffInEachGenre)
+The result amplification can be multiplied to other similarity results.
+
+This method can give slightly better result than pure user-based approach because
+it not only considers history ratings but also takes into consideration user and item attributes. I think with more data, this approach can be better than best item-based
+approach as well.
